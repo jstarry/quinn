@@ -673,7 +673,7 @@ impl ConnectionRef {
         on_connected: oneshot::Sender<bool>,
         udp_state: Arc<UdpState>,
     ) -> Self {
-        Self(Arc::new(Mutex::new(ConnectionInner {
+        let mut conn_inner = ConnectionInner {
             inner: conn,
             driver: None,
             handle,
@@ -696,7 +696,16 @@ impl ConnectionRef {
             error: None,
             ref_count: 0,
             udp_state,
-        })))
+        };
+
+        // Forward any initial endpoint events like "NeedIdentifiers" so that
+        // they can be polled immediately by the EndpointDriver rather than
+        // waiting for the ConnectionDriver to forward them in a new thread.
+        // This allows reduces the number of packets the server needs to send
+        // during the initial handshake.
+        conn_inner.forward_endpoint_events();
+
+        Self(Arc::new(Mutex::new(conn_inner)))
     }
 
     fn stable_id(&self) -> usize {
